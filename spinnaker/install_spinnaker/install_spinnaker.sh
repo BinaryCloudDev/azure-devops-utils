@@ -7,6 +7,7 @@ Command
 Arguments
   --storage_account_name|-san [Required] : Storage Account name used for Spinnaker's persistent storage
   --storage_account_key|-sak  [Required] : Storage Account key used for Spinnaker's persistent storage
+  --front50_port|-fp                     : Port to use for front50, if different than the default
   --artifacts_location|-al               : Url used to reference other scripts/artifacts.
   --sas_token|-st                        : A sas token needed if the artifacts location is private.
 EOF
@@ -35,6 +36,7 @@ function run_util_script() {
 
 #Set defaults
 artifacts_location="https://raw.githubusercontent.com/Azure/azure-devops-utils/master/"
+front50_port=""
 
 while [[ $# > 0 ]]
 do
@@ -47,6 +49,10 @@ do
       ;;
     --storage_account_key|-sak)
       storage_account_key="$1"
+      shift
+      ;;
+    --front50_port|-fp)
+      front50_port="$1"
       shift
       ;;
     --artifacts_location|-al)
@@ -70,27 +76,27 @@ done
 throw_if_empty --storage_account_name $storage_account_name
 throw_if_empty --storage_account_key $storage_account_key
 
-#Install Spinnaker
-curl --silent https://raw.githubusercontent.com/spinnaker/spinnaker/master/InstallSpinnaker.sh | sudo bash -s -- --quiet --noinstall_cassandra
+curl --silent -O https://raw.githubusercontent.com/spinnaker/halyard/master/install/stable/InstallHalyard.sh
+sudo bash InstallHalyard.sh -y
+rm InstallHalyard.sh
 
-# The install script sometimes fails to start spinnaker, so start it here
-sudo service spinnaker start
+# Set Halyard to use the latest released/validated version of Spinnaker
+hal config version edit --version $(hal version latest -q)
 
-# Disable all storage methods for front50 except for azs
-sudo /opt/spinnaker/install/change_cassandra.sh --echo=inMemory --front50=azs
+hal config storage azs edit --storage-account-name $storage_account_name --storage-account-key $storage_account_key
+hal config storage edit --type azs
 
-front50_config_file="/opt/spinnaker/config/front50-local.yml"
-sudo touch "$front50_config_file"
-sudo cat <<EOF >"$front50_config_file"
-spinnaker:
-  azs:
-    enabled: true
-    storageAccountName: REPLACE_STORAGE_ACCOUNT_NAME
-    storageAccountKey: REPLACE_STORAGE_ACCOUNT_KEY
+sudo hal deploy apply
+
+if [ -n "$front50_port" ] && [ "$front50_port" != "8080" ]; then
+  echo "Reconfiguring front50 to use port '${front50_port}'..."
+  spinnaker_local_config="/opt/spinnaker/config/spinnaker-local.yml"
+  front50_port=8081
+  sudo touch "$spinnaker_local_config"
+  sudo cat <<EOF >"$spinnaker_local_config"
+services:
+  front50:
+    port: $front50_port
 EOF
-
-sudo sed -i "s|REPLACE_STORAGE_ACCOUNT_NAME|${storage_account_name}|" $front50_config_file
-sudo sed -i "s|REPLACE_STORAGE_ACCOUNT_KEY|${storage_account_key}|" $front50_config_file
-
-# Restart front50 so that config changes take effect
-run_util_script "spinnaker/await_restart_service/await_restart_service.sh" --service front50
+  sudo service spinnaker restart # We have to restart all services so that they know how to communicate to front50
+fi

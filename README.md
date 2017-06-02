@@ -22,7 +22,6 @@ This repository contains utility scripts to run/configure DevOp systems in Azure
     1. Deploy to a development environment
     1. Wait for manual judgement
     1. Deploy to a production environment
-  * [await_restart_service.sh](spinnaker/await_restart_service/): Restarts a Spinnaker service and waits for the service to be open for requests.
   * [configure_k8s.sh](spinnaker/configure_k8s/): Automatically configure a spinnaker instance to target a Kubernetes cluster and Azure Container Registry.
   * [configure_vmss.sh](spinnaker/configure_vmss/): Automatically configure a Spinnaker instance to target VM Scale Sets and a Jenkins instance hosting an Aptly repository.
   * [copy_kube_config.sh](spinnaker/copy_kube_config/): Programatically copies a kubeconfig file from an Azure Container Service Kubernetes cluster to a Spinnaker machine.

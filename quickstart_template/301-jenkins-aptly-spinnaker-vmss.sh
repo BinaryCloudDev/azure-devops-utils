@@ -111,13 +111,36 @@ throw_if_empty packer_storage_account $packer_storage_account
 throw_if_empty vm_fqdn $vm_fqdn
 throw_if_empty region $region
 
-run_util_script "spinnaker/install_spinnaker/install_spinnaker.sh" -san "$storage_account_name" -sak "$storage_account_key"  -al "$artifacts_location" -st "$artifacts_location_sas_token"
+front50_port=8081 # Front50 conflicts with Jenkins port, so use a different one
+run_util_script "spinnaker/install_spinnaker/install_spinnaker.sh" -san "$storage_account_name" -sak "$storage_account_key" -fp "$front50_port" -al "$artifacts_location" -st "$artifacts_location_sas_token"
 
-echo "Reconfiguring front50 to use ${front50_port} so that it doesn't conflict with Jenkins..."
-sudo sed -i "s|front50:|front50:\n    port: $front50_port|" /opt/spinnaker/config/spinnaker-local.yml
-sudo service spinnaker restart # We have to restart all services so that they know how to communicate to front50
+# Configure rosco
+rosco_config_file="/opt/spinnaker/config/rosco-local.yml"
+sudo touch "$rosco_config_file"
+sudo cat <<EOF >"$rosco_config_file"
+debianRepository: http://ppa.launchpad.net/openjdk-r/ppa/ubuntu trusty main;http://${vm_fqdn}:9999 trusty main
+defaultCloudProviderType: azure
+EOF
 
-run_util_script "spinnaker/configure_vmss/configure_vmss.sh" -ai "${app_id}" -ak "${app_key}" -ti "${tenant_id}" -si "${subscription_id}" -rg "${resource_group}" -vn "${vault_name}" -psa "${packer_storage_account}" -ju "${jenkins_username}" -jp "${jenkins_password}" -vf "${vm_fqdn}" -r "$region" -al "${artifacts_location}" -st "${artifacts_location_sas_token}"
+# TODO: Set default region?
+hal config provider azure enable
+echo "$app_key" | hal config provider azure account add my-azure-account \
+  --client-id $app_id \
+  --tenant-id $tenant_id \
+  --subscription-id $subscription_id \
+  --default-key-vault $vault_name \
+  --default-resource-group $resource_group \
+  --packer-resource-group $resource_group \
+  --packer-storage-account $packer_storage_account
+  --app-key
+
+hal config ci jenkins enable
+echo $jenkins_password | hal config ci jenkins master add my-jenkins-master \
+    --address "http://localhost:8080" \
+    --username $jenkins_username \
+    --password
+
+sudo hal deploy apply
 
 run_util_script "jenkins/install_jenkins.sh" -jf "${vm_fqdn}" -al "${artifacts_location}" -st "${artifacts_location_sas_token}"
 
