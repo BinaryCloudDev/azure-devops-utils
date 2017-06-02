@@ -86,17 +86,11 @@ hal config version edit --version $(hal version latest -q)
 hal config storage azs edit --storage-account-name $storage_account_name --storage-account-key $storage_account_key
 hal config storage edit --type azs
 
-sudo hal deploy apply
-
 if [ -n "$front50_port" ] && [ "$front50_port" != "8080" ]; then
-  echo "Reconfiguring front50 to use port '${front50_port}'..."
-  spinnaker_local_config="/opt/spinnaker/config/spinnaker-local.yml"
-  front50_port=8081
-  sudo touch "$spinnaker_local_config"
-  sudo cat <<EOF >"$spinnaker_local_config"
-services:
-  front50:
-    port: $front50_port
-EOF
-  sudo service spinnaker restart # We have to restart all services so that they know how to communicate to front50
+  echo "TODO(erijiz): $HOME/.hal/default/service-settings/front50.yml"
+  front50_config_file="$HOME/.hal/default/service-settings/front50.yml"
+  touch "$front50_config_file"
+  echo "port: $front50_port" > "$front50_config_file"
 fi
+
+sudo hal deploy apply

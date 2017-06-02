@@ -13,7 +13,6 @@ Arguments
   --user_name|-un                    [Required] : Admin user name for your Spinnaker VM and Kubernetes cluster
   --git_repository|-gr               [Required] : Git URL with a Dockerfile in it's root
   --resource_group|-rg               [Required] : Resource group containing your Kubernetes cluster
-  --master_fqdn|-mf                  [Required] : Master FQDN of your Kubernetes cluster
   --storage_account_name|-san        [Required] : Storage Account name used for Spinnaker's persistent storage
   --storage_account_key|-sak         [Required] : Storage Account key used for Spinnaker's persistent storage
   --azure_container_registry|-acr    [Required] : Azure Container Registry url
@@ -84,10 +83,6 @@ do
       resource_group="$1"
       shift
       ;;
-    --master_fqdn|-mf)
-      master_fqdn="$1"
-      shift
-      ;;
     --storage_account_name|-san)
       storage_account_name="$1"
       shift
@@ -137,7 +132,6 @@ throw_if_empty --tenant_id $tenant_id
 throw_if_empty --user_name $user_name
 throw_if_empty --git_repository $git_repository
 throw_if_empty --resource_group $resource_group
-throw_if_empty --master_fqdn $master_fqdn
 throw_if_empty --storage_account_name $storage_account_name
 throw_if_empty --storage_account_key $storage_account_key
 throw_if_empty --azure_container_registry $azure_container_registry
@@ -145,7 +139,7 @@ throw_if_empty --docker_repository $docker_repository
 throw_if_empty --pipeline_port $pipeline_port
 throw_if_empty --jenkins_fqdn $jenkins_fqdn
 
-spinnaker_kube_config_file="/home/spinnaker/.kube/config"
+spinnaker_kube_config_file="/home/${user_name}/.kube/config"
 kubectl_file="/usr/local/bin/kubectl"
 
 #install docker if not already installed
@@ -186,7 +180,7 @@ az login --service-principal -u "$app_id" -p "$app_key" --tenant "$tenant_id"
 az account set --subscription "$subscription_id"
 
 # Copy kube config to this VM
-run_util_script "spinnaker/copy_kube_config/copy_kube_config.sh" -un "$user_name" -rg "$resource_group" -mf "$master_fqdn"
+run_util_script "spinnaker/copy_kube_config/copy_kube_config.sh" -df "$spinnaker_kube_config_file" -rg "$resource_group"
 
 docker_hub_account="docker-hub-registry"
 hal config provider docker-registry enable
@@ -212,8 +206,6 @@ sudo hal deploy apply
 if !(command -v kubectl >/dev/null); then
   sudo curl -L -s -o $kubectl_file https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
   sudo chmod +x $kubectl_file
-  mkdir -p /home/${user_name}/.kube
-  sudo cp "$spinnaker_kube_config_file" "/home/${user_name}/.kube/config"
 fi
 
 run_util_script "spinnaker/add_k8s_pipeline/add_k8s_pipeline.sh" -an "$acr_account" -rg "$azure_container_registry" -rp "$docker_repository" -p "$pipeline_port" -al "$artifacts_location" -st "$artifacts_location_sas_token"
